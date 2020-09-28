@@ -35,3 +35,64 @@
           --pfile /data/Wolfson-UKBB-Dobson/imputed_ukb_genotypes/plink2_files/chr_4 \
           --pheno /data/Wolfson-UKBB-Dobson/smoking_gwis/whole_cohort_MS_pheno.txt \
           --to-bp 40367234
+
+#### Now we have a good look in R
+
+        # read in libs
+        library(tidyverse)
+        library(qqman)
+
+        # read in GxE results
+        chrn7 = read_table2("/data/Wolfson-UKBB-Dobson/smoking_gwis/chnra7.MS_status.glm.logistic.hybrid")
+        chrn9 = read_table2("/data/Wolfson-UKBB-Dobson/smoking_gwis/chnra9.MS_status.glm.logistic.hybrid")
+
+        # filter to GxE results and count how man ps < 0.05
+        chrn7 = chrn7 %>% filter(TEST=="ADDxyoung_smoker")
+        chrn7 %>% filter(P<0.05) %>% count()
+        chrn9 = chrn9 %>% filter(TEST=="ADDxyoung_smoker")
+        chrn9 %>% filter(P<0.05) %>% count()
+
+        # save snps
+        chrn7_snps = chrn7 %>% select(ID,P) %>% rename(SNP=ID)
+        chrn9_snps = chrn9 %>% select(ID,P) %>% rename(SNP=ID)
+        write_tsv(chrn7_snps,"chrn7_snps")
+        write_tsv(chrn9_snps,"chrn9_snps")
+
+        # clump
+        system("module load plink;plink --bfile /data/Wolfson-UKBB-Dobson/1kg_reference/filtered_chr4 --clump chrn9_snps --clump-p1 1 --clump-p2 1 --out chrn9" )
+        system("module load plink;plink --bfile /data/Wolfson-UKBB-Dobson/1kg_reference/filtered_chr15 --clump chrn7_snps --clump-p1 1 --clump-p2 1 --out chrn7" )
+
+
+        # define p threshold
+        p_threshold = 0.05/(63+27)
+        chrn9=chrn9 %>% mutate(below_threshold = ifelse(P<p_threshold,TRUE,FALSE))
+        chrn7=chrn7 %>% mutate(below_threshold = ifelse(P<p_threshold,TRUE,FALSE))
+
+        # read in briggs snps
+        briggs_snps = read_csv("briggs_st2.csv")
+        briggs_snps = briggs_snps %>% select(rsID, `Bootstrapped p-value`, `Interaction OR (Bootstrapped bias-corrected 95% CI)`,A1)
+
+        # filter to overlapping snps
+        briggs_snps =  briggs_snps %>% filter(rsID %in% chrn7_snps$SNP | rsID %in% chrn9_snps$SNP)
+        combo =  briggs_snps %>% rename(ID = rsID) %>% left_join(bind_rows(chrn7,chrn9),by="ID")
+
+        # find p proportion
+        combo = combo %>% mutate("p_prop" = `Bootstrapped p-value`/P)
+
+        # get ORs from briggs
+        combo = combo %>% separate(`Interaction OR (Bootstrapped bias-corrected 95% CI)`,sep="\\(",into=c("OR_briggs"," "))
+
+        # ensure effect alleles are aligned
+        combo = combo %>% filter(A1.x==A1.y)
+
+
+        combo$OR_briggs =  as.numeric(combo$OR_briggs)
+
+        # get betas and compare
+        combo$beta_briggs = log(combo$OR_briggs)
+        combo$beta_ukb = log(combo$OR)
+        combo = combo %>% mutate("beta_prop" = beta_briggs/beta_ukb)
+
+
+
+
