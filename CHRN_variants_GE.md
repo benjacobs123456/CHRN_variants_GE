@@ -147,7 +147,22 @@ combo$OR_briggs =  as.numeric(combo$OR_briggs)
 combo$beta_briggs = log(combo$OR_briggs)
 combo$beta_ukb = log(combo$OR)
 combo = combo %>% mutate("beta_prop" = beta_briggs/beta_ukb)
+
+# make manhattan plots
+png("chrn7_manhattan.png",res=300,units="in",height=8,width=8)
+manhattan(chrn7 %>% rename(CHR=`#CHROM`,BP=POS),xlim=c(32312691,32474722))
+dev.off()
+
+png("chrn9_manhattan.png",res=300,units="in",height=8,width=8)
+manhattan(chrn9 %>% rename(CHR=`#CHROM`,BP=POS),xlim=c(40327346,40367234))
+dev.off()
 ````
+
+#### Here's the plot for CHRN7A:
+![CHRN7A](chrn7_manhattan.png)
+
+#### Here's the plot for CHRN9A:
+![CHRN9A](chrn9_manhattan.png)
 
 
 
