@@ -2,7 +2,58 @@
 
 ### The original paper is [here](https://journals.sagepub.com/doi/full/10.1177/1352458520958361#bibr14-1352458520958361)
 
-#### First, we ran GxE interaction models in PLINKv2 for CHRN7A
+#### First, we prepared the cohort, covariate files, applied individual QC, and defined smoking status in R
+````r
+library(readr)
+library(dplyr)
+setwd("/data/Wolfson-UKBB-Dobson/smoking_gwis")
+df = read_tsv("/data/Wolfson-UKBB-Dobson/ukb_pheno_911/ukb_pheno_final_MS_1301")
+
+# remove any dups
+df = df %>% distinct(EID,.keep_all=TRUE)
+#remove ms cases with no age at dx / diagnosed before 20
+
+df = df %>% filter(!(MS_status==1 & (age_at_ms_diagnosis<30 | is.na(age_at_ms_diagnosis))))
+# select only unrelated white individuals
+kin = read_table2("/data/Wolfson-UKBB-Dobson/helper_progs_and_key/ukb43101_rel_s488282.dat")
+exclusion = kin %>% filter(Kinship>0.0884) %>% select(ID1) %>% rename("EID"="ID1") 
+df = df %>% 
+  mutate("FID"=EID) %>% 
+  rename("IID"=EID) %>% 
+  mutate("FID"=IID)  
+df = df %>% distinct(IID,.keep_all = TRUE)
+# relatedness and ethnic groups
+df = df %>% filter(!IID %in% exclusion$EID) %>% filter(`Genetic ethnic grouping.0.0`=="Caucasian")
+
+df = df %>% select(FID,IID,Sex.0.0,contains("enetic"),MS_status,"Smoking status.0.0","Age at recruitment.0.0",contains("Age started smoking in"))
+
+#make young starters
+young= df %>% filter(`Smoking status.0.0`=="Previous" &`Age started smoking in former smokers.0.0` < 20) %>% mutate("young_smoker"="2")
+young2= df %>% filter(`Smoking status.0.0`=="Current" &`Age started smoking in current smokers.0.0` < 20) %>% mutate("young_smoker"="2")
+nyoung= df %>% filter(!IID %in% young$IID) %>% filter(!IID %in% young2$IID) %>% mutate("young_smoker"="1")
+df = bind_rows(young,young2,nyoung)
+
+
+# whole unmatched cohort
+# write ms pheno file
+ms = df %>% select(FID,IID,MS_status) %>% mutate(MS_status = ifelse(MS_status==1,2,1))
+write_tsv(ms,"whole_cohort_MS_pheno.txt")
+
+
+# write individuals to keep
+indivs = df %>% select(FID,IID) 
+write_tsv(indivs,"whole_cohort_indivs_to_include",col_names=FALSE)
+
+#write covars
+covar=df %>% select(FID, IID,`Age at recruitment.0.0`,Sex.0.0,young_smoker,contains("Genetic principal"),-`Used in genetic principal components.0.0`)
+
+colnames(covar)=c("FID","IID","Age","Sex","young_smoker",paste0("pc",c(1:40)))
+covar$Sex = recode(covar$Sex,"Male"="1","Female"="2")
+
+write_tsv(covar,"whole_cohort_covars.txt")
+````
+
+#### Next, we ran GxE interaction models in PLINKv2 for CHRN7A
         plink2 \
           --chr 15 \
           --covar /data/Wolfson-UKBB-Dobson/smoking_gwis/whole_cohort_covars.txt \
